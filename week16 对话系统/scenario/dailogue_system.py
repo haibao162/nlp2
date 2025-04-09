@@ -86,7 +86,6 @@ class DailogueSystem:
                 memory[slot] = re.search(slot_values, memory["query"]).group()
         return memory
 
-
     def dst(self, memory):
         #确认当前hit_node所需要的所有槽位是否已经齐全
         slot_list = self.nodes_info[memory["hit_node"]].get("slot", [])
