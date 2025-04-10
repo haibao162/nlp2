@@ -17,8 +17,8 @@ class DailogueSystem:
         self.nodes_info = {}
         self.load_scenario('scenario-买衣服.json')
         self.load_slot_template('slot_fitting_templet.xlsx')
-        # {'#服装类型#': ('您想买长袖、短袖还是半截袖', '长袖|短袖|半截袖'), 
-        #  '#服装颜色#': ('您喜欢什么颜色', '红|橙|黄|绿|青|蓝|紫'), 
+        # {'#服装类型#': ('您想买长袖、短袖还是半截袖', '长袖|短袖|半截袖'),
+        #  '#服装颜色#': ('您喜欢什么颜色', '红|橙|黄|绿|青|蓝|紫'),
         #  '#服装尺寸#': ('您想要多尺寸', 's|m|l|xl|xll'),
         #  '#分期付款期数#': ('您想分多少期，可以有3期，6期，9期，12期', '3|6|9|12'),
         #  '#支付方式#': ('您想使用什么支付方式', '信用卡|支付宝|微信')}
@@ -103,15 +103,31 @@ class DailogueSystem:
         #如果require_slot为空，则执行当前节点的操作,否则进行反问
         if memory["require_slot"] is None:
             memory["policy"] = "reply"
-            childnodes = self.nodes_info[memory['hit_node']].get('childnode', [])
-            memory["avaliable_nodes"] = childnodes
+            childnodes = self.nodes_info[memory['hit_node']].get('childnode', []) #当前节点提问完了，available_nodes取子节点，进行提问
+            memory["available_nodes"] = childnodes
             # 执行动作 take action
         else:
             memory["policy"] = "ask"
             memory["available_nodes"] = [memory['hit_node']] #停留在当前节点，直到槽位填满
         return memory
-        
+    
+    def nlg(self, memory):
+        #根据policy生成回复,反问或回复
+        if memory["policy"] == "reply":
+            response = self.nodes_info[memory['hit_node']]['response']
+            response = self.fill_in_template(response, memory)
+            memory["response"] = response
+        else:
+            slot = memory["require_slot"]
+            memory["response"] = self.slot_to_qv[slot][0]
+        return memory
 
+    def fill_in_template(self, response, memory):
+        slot_list = self.nodes_info[memory['hit_node']].get('slot', [])
+        for slot in slot_list:
+            if slot in response:
+                response = response.replace(slot, memory[slot])
+        return response
 
     def generate_response(self, query, memory):
         memory['query'] = query
@@ -121,8 +137,10 @@ class DailogueSystem:
         # {'available_nodes': ['scenario-买衣服node1'], 
         #  'query': '长袖', 'hit_node': 'scenario-买衣服node1', 
         #  'require_slot': '#服装颜色#', '#服装类型#': '长袖'}
-        # memory = self.dpo(memory)
-        # memory = self.nlg(memory)
+        memory = self.dpo(memory)
+        # print(memory, 'dpo')
+        memory = self.nlg(memory)
+        # 输完问题，如果我买了，就不提示分期付款了，直接提示：已为您下单，谢谢惠顾，流程结束
         return memory
 
 
@@ -135,4 +153,4 @@ if __name__ == '__main__':
     while True:
         query = input("user: ")
         memory = ds.generate_response(query, memory)
-        # print("System: ", memory["response"])
+        print("System: ", memory["response"])
