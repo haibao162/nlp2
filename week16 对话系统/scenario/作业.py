@@ -22,6 +22,7 @@ class DailogueSystem:
         #  '#服装尺寸#': ('您想要多尺寸', 's|m|l|xl|xll'),
         #  '#分期付款期数#': ('您想分多少期，可以有3期，6期，9期，12期', '3|6|9|12'),
         #  '#支付方式#': ('您想使用什么支付方式', '信用卡|支付宝|微信')}
+        self.init_repeat_node()
 
     def load_scenario(self, scenario_file):
         with open(scenario_file, 'r', encoding='utf-8') as f:
@@ -43,6 +44,15 @@ class DailogueSystem:
             values = row["values"]
             self.slot_to_qv[slot] = (query, values)
 
+    def init_repeat_node(self):
+        node_id = 'special_repeat_node'
+        node_info = {'id': node_id, 'intent': ["你说啥", "再说一遍"]}
+        self.nodes_info[node_id] = node_info #记录这个新节点
+        for node_info in self.nodes_info.values():
+            node_info['childnode'] = node_info.get('childnode', []) + [node_id] #将这个新节点作为所有节点的子节点
+        
+        # print(self.nodes_info, 'nodes_info')
+        # 'childnode': ['scenario-买衣服node2', 'scenario-买衣服node3', 'scenario-买衣服node4', 'special_repeat_node']
 
     def nlu(self, memory):
         memory = self.intent_recognition(memory)
@@ -91,31 +101,28 @@ class DailogueSystem:
     def dst(self, memory):
         # 对话状态跟踪
         hit_node = memory['hit_node']
-        for slot in self.all_node_info[hit_node].get('slot', []):
+        for slot in self.nodes_info[hit_node].get('slot', []):
             if slot not in memory:
                 memory['require_slot'] = slot
                 return memory
         memory["require_slot"] = None
+        
+        if hit_node == "special_repeat_node":
+            memory["state"] = "repeat"
+        else:
+            memory["state"] = None
         return memory
         
-    
-    def dst(self, memory):
-        #确认当前hit_node所需要的所有槽位是否已经齐全，'#服装类型#': '长袖'
-        # 一开始slot不在memory中，require_slot为服装类型
-        slot_list = self.nodes_info[memory['hit_node']].get('slot', [])
-        for slot in slot_list:
-            if slot not in memory:
-                memory['require_slot'] = slot
-                return memory
-        memory["require_slot"] = None
-        return memory
     
     def dpo(self, memory):
         #如果require_slot为空，则执行当前节点的操作,否则进行反问
         if memory["require_slot"] is None:
-            memory["policy"] = "reply"
-            childnodes = self.nodes_info[memory['hit_node']].get('childnode', []) #当前节点提问完了，available_nodes取子节点，进行提问
-            memory["available_nodes"] = childnodes
+            if memory["state"] == "repeat":
+                memory["policy"] = "repeat"
+            else:
+                memory["policy"] = "reply"
+                childnodes = self.nodes_info[memory['hit_node']].get('childnode', []) #当前节点提问完了，available_nodes取子节点，进行提问
+                memory["available_nodes"] = childnodes
             # 执行动作 take action
         else:
             memory["policy"] = "ask"
@@ -127,6 +134,10 @@ class DailogueSystem:
         if memory["policy"] == "reply":
             response = self.nodes_info[memory['hit_node']]['response']
             response = self.fill_in_template(response, memory)
+            memory["response"] = response
+        elif memory["policy"] == "repeat":
+            #使用上一轮的回复
+            response = memory["response"]
             memory["response"] = response
         else:
             slot = memory["require_slot"]
